@@ -87,33 +87,45 @@ set_fan_speed() {
   ipmi raw 0x30 0x30 0x02 0xff "$hex" > /dev/null 2>&1
 }
 
-get_temp() {
-  local raw line value max=-1
+set_fan_speed() {
+  local percent=$1 hex id
+  hex=$(printf '0x%02x' "$percent") || return 1
 
-  # One sensor NAME can return several readings: dual-socket boxes expose two
-  # sensors both called "Temp". Read every line and use the hottest, because
-  # that is the one the fans have to answer to. Treating the multi-line reply
-  # as a single number reads as non-numeric and fails the whole sensor read.
-  raw=$(ipmi sensor reading "$SENSOR_NAME" 2>/dev/null) || return 1
-
-  while IFS= read -r line; do
-    value="${line#*|}"                  # drop the sensor-name column
-    value="${value%%|*}"                # keep only the reading column
-    value="${value//[[:space:]]/}"
-    # Skip empty / "na" / non-numeric readings; truncate any decimal portion.
-    if [[ "$value" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
-      value="${value%.*}"
-      if (( value > max )); then
-        max=$value
-      fi
-    fi
-  done <<< "$raw"
-
-  if (( max < 0 )); then
-    return 1
-  fi
-  echo "$max"
+  for id in {0..7}; do
+    ipmi raw 0x30 0x30 0x02 \
+      "$(printf '0x%02x' "$id")" "$hex" \
+      > /dev/null 2>&1 || return 1
+  done
 }
+
+
+get_temp() {
+	    local raw line value max=-1
+
+	    # One sensor NAME can return several readings: dual-socket boxes expose two
+	    # sensors both called "Temp". Read every line and use the hottest, because
+	    # that is the one the fans have to answer to. Treating the multi-line reply
+	    # as a single number reads as non-numeric and fails the whole sensor read.
+	    raw=$(ipmi sensor reading "$SENSOR_NAME" 2>/dev/null) || return 1
+
+	    while IFS= read -r line; do
+	    value="${line#*|}"	 # drop the sensor-name column
+	    value="${value%%|*}" # keep only the reading column
+	    value="${value//[[:space:]]/}"
+	    # Skip empty / "na" / non-numeric readings; truncate any decimal portion.
+	    if [[ "$value" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+	    value="${value%.*}"
+	    if (( value > max )); then
+            max=$value
+	    fi
+	    fi
+	    done <<< "$raw"
+
+	    if (( max < 0 )); then
+	    return 1
+	    fi
+	    echo "$max"
+	    }
 
 temp_to_percent() {
   local temp=$1
